@@ -10,12 +10,18 @@ on:
 jobs:
   auto-release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      repository-projects: write
     
     steps:
     - name: 🔍 Checkout feat/update branch
       uses: actions/checkout@v4
       with:
         ref: feat/update
+        token: ${{ secrets.GITHUB_TOKEN }}
+        fetch-depth: 0
         
     - name: 🐍 Setup Python
       uses: actions/setup-python@v4
@@ -143,7 +149,9 @@ jobs:
         # Commit the encrypted database
         git add "$DB_FILE"
         git commit -m "🔐 Update encrypted database to ${{ steps.version.outputs.version }}"
-        git push origin main
+        
+        # Push using token
+        git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git main
         
     - name: 🚀 Create Release
       run: |
