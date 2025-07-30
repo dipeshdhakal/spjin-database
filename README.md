@@ -45,7 +45,7 @@ When you push to `feat/update`:
 ### File Flow Summary
 - **feat/update**: `SPJIN.db` (raw) or `SPJIN.db.zip` (compressed) → **unencrypted**
 - **main branch**: `database/SPJIN.db` → **encrypted, uncompressed**
-- **GitHub Release**: `encrypted-database.zip` → **encrypted + compressed** (for mobile apps)
+- **GitHub Release**: `SPJIN.db.zip` → **encrypted + compressed** (for mobile apps)
 
 ## 🔐 Security Features
 
@@ -64,8 +64,8 @@ Database updates are automatic and optimized:
 - No manual intervention required
 
 ### Mobile App Download Flow
-1. **Download**: `encrypted-database.zip` (optimized size)
-2. **Extract**: Unzip to get encrypted `.db` file  
+1. **Download**: `SPJIN.db.zip` (optimized size)
+2. **Extract**: Unzip to get encrypted `SPJIN.db` file  
 3. **Decrypt**: AES-256-CBC decryption with configured key
 4. **Ready**: Database is ready for use
 
@@ -89,13 +89,18 @@ Each release includes:
 ```
 spjin-database/
 ├── database/           # Your source database files
-│   ├── SPJIN.db       # Raw database file (option 1)
-│   └── SPJIN.db.zip   # Compressed database (option 2, recommended for large files)
+│   ├── SPJIN.db       # ENCRYPTED database in main branch
+│   └── SPJIN.db.zip   # Raw/compressed upload in feat/update (temporary)
 ├── .github/
 │   └── workflows/
 │       └── auto-release.yml  # Automation workflow
 └── README.md          # This file
 ```
+
+### Storage Details
+- **feat/update branch**: Raw database files (unencrypted, temporary)
+- **main branch**: Encrypted database (`database/SPJIN.db`) 
+- **GitHub Releases**: Compressed encrypted database (`SPJIN.db.zip`)
 
 ## 🛠️ Setup Instructions
 
