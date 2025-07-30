@@ -159,8 +159,15 @@ jobs:
         DB_NAME="${{ steps.find-db.outputs.db_name }}"
         VERSION="${{ steps.version.outputs.version }}"
         
-        # Get file size for release notes
+        # Create zipped version for release
+        ZIPPED_FILE="encrypted-database.zip"
+        echo "📦 Creating zipped release file: $ZIPPED_FILE"
+        zip "$ZIPPED_FILE" "$DB_FILE"
+        
+        # Get file sizes for release notes
         ENCRYPTED_SIZE=$(stat -c%s "$DB_FILE" 2>/dev/null || stat -f%z "$DB_FILE" 2>/dev/null)
+        ZIPPED_SIZE=$(stat -c%s "$ZIPPED_FILE" 2>/dev/null || stat -f%z "$ZIPPED_FILE" 2>/dev/null)
+        COMPRESSION_RATIO=$(echo "scale=1; (($ENCRYPTED_SIZE - $ZIPPED_SIZE) * 100) / $ENCRYPTED_SIZE" | bc -l)
         
         # Create release notes
         echo "## 🗄️ Database Update" > release_notes.md
@@ -168,29 +175,36 @@ jobs:
         echo "Database has been updated with new encrypted content." >> release_notes.md
         echo "" >> release_notes.md
         echo "## 📊 Database Information" >> release_notes.md
-        echo "- Updated encrypted database file" >> release_notes.md
+        echo "- Updated encrypted database file (zipped for optimal download)" >> release_notes.md
         echo "- Version: $VERSION" >> release_notes.md
         echo "- Updated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> release_notes.md
-        echo "- File size: $(echo "scale=1; $ENCRYPTED_SIZE / 1024 / 1024" | bc -l) MB" >> release_notes.md
+        echo "- Original encrypted size: $(echo "scale=1; $ENCRYPTED_SIZE / 1024 / 1024" | bc -l) MB" >> release_notes.md
+        echo "- Zipped download size: $(echo "scale=1; $ZIPPED_SIZE / 1024 / 1024" | bc -l) MB" >> release_notes.md
+        echo "- Compression savings: ${COMPRESSION_RATIO}%" >> release_notes.md
         echo "" >> release_notes.md
         echo "## 🔐 Security" >> release_notes.md
         echo "- Database is encrypted with AES-256-CBC" >> release_notes.md
         echo "- Encryption key required for decryption" >> release_notes.md
+        echo "- File is zipped for optimal download speed" >> release_notes.md
         echo "" >> release_notes.md
         echo "## 📱 Mobile App Usage" >> release_notes.md
-        echo "1. App downloads the encrypted database file" >> release_notes.md
-        echo "2. App automatically decrypts using the configured key" >> release_notes.md
-        echo "3. Decrypted database is ready for use" >> release_notes.md
+        echo "1. App downloads the zipped encrypted database file" >> release_notes.md
+        echo "2. App unzips the downloaded file" >> release_notes.md
+        echo "3. App automatically decrypts using the configured key" >> release_notes.md
+        echo "4. Decrypted database is ready for use" >> release_notes.md
         
-        # Create release with encrypted database file
+        # Create release with zipped encrypted database file
         gh release create "$VERSION" \
           --title "🗄️ Database $VERSION" \
           --notes-file release_notes.md \
           --latest \
-          "$DB_FILE"
+          "$ZIPPED_FILE"
         
         echo "🎉 Release created: $VERSION"
-        echo "📦 Encrypted file uploaded: $DB_NAME"
+        echo "📦 Zipped encrypted file uploaded: $ZIPPED_FILE"
+        echo "📊 Original size: $(echo "scale=1; $ENCRYPTED_SIZE / 1024 / 1024" | bc -l) MB"
+        echo "📊 Zipped size: $(echo "scale=1; $ZIPPED_SIZE / 1024 / 1024" | bc -l) MB"
+        echo "📊 Compression savings: ${COMPRESSION_RATIO}%"
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         
