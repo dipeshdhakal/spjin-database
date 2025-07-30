@@ -7,8 +7,8 @@ This repository contains encrypted database releases for the SPJIN app. Users ca
 ### Quick Update Process
 
 1. **Create a new branch**: `feat/update`
-2. **Add your raw database file** to the `/database` directory (unencrypted `.db` file)
-3. **Push to GitHub**: The workflow automatically encrypts, creates a release, and cleans up!
+2. **Compress your raw database file** and add it to the `/database` directory
+3. **Push to GitHub**: The workflow automatically extracts, encrypts, creates a release, and cleans up!
 
 ### Step-by-Step Instructions
 
@@ -16,11 +16,14 @@ This repository contains encrypted database releases for the SPJIN app. Users ca
 # 1. Create and switch to update branch
 git checkout -b feat/update
 
-# 2. Copy your updated database file
-cp /path/to/your/SPJIN.db database/
+# 2. Compress your database file (recommended for large files)
+zip database/SPJIN.db.zip /path/to/your/SPJIN.db
+
+# Alternative: Copy uncompressed file directly
+# cp /path/to/your/SPJIN.db database/
 
 # 3. Commit and push
-git add database/SPJIN.db
+git add database/
 git commit -m "Update database with new content"
 git push origin feat/update
 
@@ -30,11 +33,12 @@ git push origin feat/update
 ### What Happens Automatically
 
 When you push to `feat/update`:
+- 📦 **Extracts** compressed database (if you uploaded a .zip file)
 - ✅ **Validates** your database file
 - 🔐 **Encrypts** it with AES-256-CBC
 - 📊 **Increments** the major version number automatically
 - 🔄 **Updates** the main branch with the encrypted database
-- 🚀 **Creates** a new GitHub release
+- 🚀 **Creates** a new GitHub release with the encrypted file
 - 🗑️ **Deletes** the `feat/update` branch to keep things clean
 
 ## 🔐 Security Features
@@ -47,15 +51,15 @@ When you push to `feat/update`:
 ## 📱 For App Users
 
 Database updates are automatic:
-- App checks for new releases on startup
-- Downloads and decrypts automatically  
+- App downloads encrypted database from GitHub releases
+- App automatically decrypts using the configured key
 - Users see progress during download
 - No manual intervention required
 
 ## 📊 Release Information
 
 Each release includes:
-- Encrypted database file 
+- Encrypted database file ready for mobile app download
 - Detailed changelog with update information
 - File size and metadata
 - Automatic major version increment
@@ -64,8 +68,9 @@ Each release includes:
 
 ```
 spjin-database/
-├── database/           # Your source database files (unencrypted)
-│   └── SPJIN.db       # Main database file
+├── database/           # Your source database files
+│   ├── SPJIN.db       # Raw database file (option 1)
+│   └── SPJIN.db.zip   # Compressed database (option 2, recommended for large files)
 ├── .github/
 │   └── workflows/
 │       └── auto-release.yml  # Automation workflow
@@ -100,11 +105,14 @@ Simply create a `feat/update` branch and add your database:
 # Create update branch
 git checkout -b feat/update
 
-# Add your database file
-cp /path/to/your/SPJIN.db database/
+# Option 1: Add compressed database (recommended for large files)
+zip database/SPJIN.db.zip /path/to/your/SPJIN.db
+
+# Option 2: Add raw database file directly
+# cp /path/to/your/SPJIN.db database/
 
 # Commit and push
-git add database/SPJIN.db
+git add database/
 git commit -m "Update database with new content"
 git push origin feat/update
 
@@ -121,13 +129,18 @@ git push origin feat/update
 
 ### Common Issues
 
-**"No database file found in /database directory!"**
-- Make sure your `.db` file is in the `database/` folder
-- Ensure the file has a `.db` extension
+**"No database file (.db or .zip) found in /database directory!"**
+- Make sure your database file is in the `database/` folder
+- Ensure the file has a `.db` extension (or is inside a `.zip` file)
+- For large files, compress them first: `zip database/SPJIN.db.zip /path/to/SPJIN.db`
+
+**"No .db file found inside the zip archive!"**
+- Check that your zip file contains a `.db` file
+- Ensure the database file has the correct extension
 
 **"Database file is empty"**
 - Check that your database file is a valid SQLite database
-- Ensure the file was copied correctly
+- Ensure the file was copied/compressed correctly
 
 **Workflow fails on GitHub**
 - Check that `DB_ENCRYPTION_KEY` secret is set correctly
