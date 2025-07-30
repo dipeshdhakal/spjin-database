@@ -42,8 +42,13 @@ jobs:
         ZIP_FILE=$(find database -name "*.zip" -type f | head -1)
         if [ -n "$ZIP_FILE" ]; then
           echo "Found compressed database: $ZIP_FILE"
-          # Extract the zip file, excluding macOS metadata
-          unzip "$ZIP_FILE" -d database/ -x "__MACOSX/*" "._*"
+          # Clean up any existing extracted files first
+          find database -name "*.db" -type f -delete 2>/dev/null || true
+          # Extract the zip file, excluding macOS metadata, overwrite without prompting
+          unzip -o "$ZIP_FILE" -d database/ -x "__MACOSX/*"
+          # Remove any macOS metadata files that might have been extracted anyway
+          find database -name "._*" -type f -delete 2>/dev/null || true
+          find database -path "*/__MACOSX/*" -delete 2>/dev/null || true
           # Find the extracted .db file (exclude macOS metadata files)
           DB_FILE=$(find database -name "*.db" -type f | grep -v "__MACOSX" | grep -v "/\._" | head -1)
           if [ -z "$DB_FILE" ]; then

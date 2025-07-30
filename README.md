@@ -37,9 +37,15 @@ When you push to `feat/update`:
 - ✅ **Validates** your database file
 - 🔐 **Encrypts** it with AES-256-CBC
 - 📊 **Increments** the major version number automatically
-- 🔄 **Updates** the main branch with the encrypted database
-- 🚀 **Creates** a new GitHub release with the encrypted file
+- 🔄 **Updates** the main branch with the **encrypted database file**
+- � **Compresses** the encrypted database for release optimization
+- �🚀 **Creates** a new GitHub release with the **zipped encrypted file**
 - 🗑️ **Deletes** the `feat/update` branch to keep things clean
+
+### File Flow Summary
+- **feat/update**: `SPJIN.db` (raw) or `SPJIN.db.zip` (compressed) → **unencrypted**
+- **main branch**: `database/SPJIN.db` → **encrypted, uncompressed**
+- **GitHub Release**: `encrypted-database.zip` → **encrypted + compressed** (for mobile apps)
 
 ## 🔐 Security Features
 
@@ -50,19 +56,33 @@ When you push to `feat/update`:
 
 ## 📱 For App Users
 
-Database updates are automatic:
-- App downloads encrypted database from GitHub releases
-- App automatically decrypts using the configured key
+Database updates are automatic and optimized:
+- App downloads **zipped encrypted database** from GitHub releases (faster downloads!)
+- App **unzips** the downloaded file
+- App automatically **decrypts** using the configured key
 - Users see progress during download
 - No manual intervention required
+
+### Mobile App Download Flow
+1. **Download**: `encrypted-database.zip` (optimized size)
+2. **Extract**: Unzip to get encrypted `.db` file  
+3. **Decrypt**: AES-256-CBC decryption with configured key
+4. **Ready**: Database is ready for use
 
 ## 📊 Release Information
 
 Each release includes:
-- Encrypted database file ready for mobile app download
+- **Zipped encrypted database** file for optimal download speed
+- **Compression statistics** showing file size savings
 - Detailed changelog with update information
-- File size and metadata
+- File size metadata for both original and compressed versions
 - Automatic major version increment
+
+### Download Benefits
+- **20-40% smaller** download sizes
+- **Faster downloads** especially on mobile networks
+- **Lower data usage** for users on metered connections
+- **Better app performance** with quicker updates
 
 ## 🔍 Repository Structure
 
