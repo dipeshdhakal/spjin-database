@@ -123,6 +123,9 @@ jobs:
       run: |
         DB_FILE="${{ steps.find-db.outputs.db_file }}"
         
+        # Store the encrypted database file temporarily
+        cp "$DB_FILE" /tmp/encrypted_database.db
+        
         # Configure git
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -131,8 +134,11 @@ jobs:
         git fetch origin main
         git checkout main
         
-        # Copy encrypted database from feat/update
-        git checkout feat/update -- "$DB_FILE"
+        # Create database directory if it doesn't exist
+        mkdir -p database
+        
+        # Copy the encrypted database to the correct location
+        cp /tmp/encrypted_database.db "$DB_FILE"
         
         # Commit the encrypted database
         git add "$DB_FILE"
