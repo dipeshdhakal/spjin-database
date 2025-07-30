@@ -36,18 +36,18 @@ jobs:
         ZIP_FILE=$(find database -name "*.zip" -type f | head -1)
         if [ -n "$ZIP_FILE" ]; then
           echo "Found compressed database: $ZIP_FILE"
-          # Extract the zip file
-          unzip "$ZIP_FILE" -d database/
-          # Find the extracted .db file
-          DB_FILE=$(find database -name "*.db" -type f | head -1)
+          # Extract the zip file, excluding macOS metadata
+          unzip "$ZIP_FILE" -d database/ -x "__MACOSX/*" "._*"
+          # Find the extracted .db file (exclude macOS metadata files)
+          DB_FILE=$(find database -name "*.db" -type f | grep -v "__MACOSX" | grep -v "/\._" | head -1)
           if [ -z "$DB_FILE" ]; then
             echo "❌ No .db file found inside the zip archive!"
             exit 1
           fi
           echo "Extracted database: $DB_FILE"
         else
-          # Look for direct .db file
-          DB_FILE=$(find database -name "*.db" -type f | head -1)
+          # Look for direct .db file (exclude macOS metadata files)
+          DB_FILE=$(find database -name "*.db" -type f | grep -v "__MACOSX" | grep -v "/\._" | head -1)
           if [ -z "$DB_FILE" ]; then
             echo "❌ No database file (.db or .zip) found in /database directory!"
             exit 1
