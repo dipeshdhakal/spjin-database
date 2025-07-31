@@ -38,17 +38,18 @@ jobs:
     - name: 🔍 Find Database File
       id: find-db
       run: |
-        # Look for .db file (exclude macOS metadata files)
-        DB_FILE=$(find database -name "*.db" -type f | grep -v "__MACOSX" | grep -v "/\._" | head -1)
+        # Look for ZIP file (exclude macOS metadata files)
+        ZIP_FILE=$(find database -name "*.zip" -type f | grep -v "__MACOSX" | grep -v "/\._" | head -1)
         
-        if [ -z "$DB_FILE" ]; then
-          echo "❌ No database file (.db) found in /database directory!"
+        if [ -z "$ZIP_FILE" ]; then
+          echo "❌ No ZIP database file found in /database directory!"
+          echo "Please upload a .zip file containing the .db file inside."
           exit 1
         fi
         
-        echo "Found database: $DB_FILE"
-        echo "db_file=$DB_FILE" >> $GITHUB_OUTPUT
-        echo "db_name=$(basename $DB_FILE)" >> $GITHUB_OUTPUT
+        echo "Found ZIP database: $ZIP_FILE"
+        echo "db_file=$ZIP_FILE" >> $GITHUB_OUTPUT
+        echo "db_name=$(basename $ZIP_FILE)" >> $GITHUB_OUTPUT
         
     - name: ✅ Validate Database
       run: |
@@ -75,8 +76,8 @@ jobs:
       run: |
         DB_FILE="${{ steps.find-db.outputs.db_file }}"
         
-        echo "🔐 Preparing encrypted database release using the corrected workflow"
-        echo "Original database: $DB_FILE"
+        echo "🔐 Preparing encrypted database release"
+        echo "Input ZIP file: $DB_FILE"
         
         # Ensure we have a 32-character encryption key
         if [ ${#ENCRYPTION_KEY} -ne 32 ]; then
@@ -84,40 +85,20 @@ jobs:
           ENCRYPTION_KEY="${ENCRYPTION_KEY:0:32}"
         fi
         
-        # Get original size
+        # Get original ZIP file size
         ORIGINAL_SIZE=$(stat -c%s "$DB_FILE" 2>/dev/null || stat -f%z "$DB_FILE" 2>/dev/null)
-        echo "📊 Original database size: $ORIGINAL_SIZE bytes ($(echo "scale=1; $ORIGINAL_SIZE / 1024 / 1024" | bc -l) MB)"
+        echo "📊 Original ZIP file size: $ORIGINAL_SIZE bytes ($(echo "scale=1; $ORIGINAL_SIZE / 1024 / 1024" | bc -l) MB)"
         
-        # Step 1: Create ZIP file (compress first)
-        ZIP_FILE="SPJIN.db.zip"
-        echo "📦 Creating ZIP file: $ZIP_FILE"
-        
-        # Create ZIP with maximum compression, ensuring .db file is at root
-        ORIGINAL_DIR=$(pwd)
-        cd "$(dirname "$DB_FILE")"
-        zip -9 "$ORIGINAL_DIR/$ZIP_FILE" "$(basename "$DB_FILE")"
-        cd "$ORIGINAL_DIR"
-        
-        # Verify ZIP was created
-        if [ ! -f "$ZIP_FILE" ]; then
-          echo "❌ Failed to create ZIP file"
-          exit 1
-        fi
-        
-        ZIP_SIZE=$(stat -c%s "$ZIP_FILE" 2>/dev/null || stat -f%z "$ZIP_FILE" 2>/dev/null)
-        COMPRESSION_RATIO=$(echo "scale=1; (($ORIGINAL_SIZE - $ZIP_SIZE) * 100) / $ORIGINAL_SIZE" | bc -l)
-        echo "📊 ZIP size: $ZIP_SIZE bytes ($(echo "scale=1; $ZIP_SIZE / 1024 / 1024" | bc -l) MB)"
-        echo "📊 Compression achieved: ${COMPRESSION_RATIO}%"
-        
+        # Show ZIP file contents
         echo "📦 ZIP file contents:"
-        unzip -l "$ZIP_FILE"
+        unzip -l "$DB_FILE"
         
-        # Step 2: Encrypt the ZIP file (zip-then-encrypt workflow)
-        ENCRYPTED_FILE="spjin-database.zip"
-        echo "🔐 Encrypting ZIP file to: $ENCRYPTED_FILE"
+        # Encrypt the ZIP file directly
+        ENCRYPTED_FILE="SPJIN.db.zip"
+        echo "🔐 Encrypting ZIP file to final release name: $ENCRYPTED_FILE"
         
         # Use OpenSSL with salt (matches our app's expected format)
-        openssl enc -aes-256-cbc -salt -in "$ZIP_FILE" -out "$ENCRYPTED_FILE" -k "$ENCRYPTION_KEY"
+        openssl enc -aes-256-cbc -salt -in "$DB_FILE" -out "$ENCRYPTED_FILE" -k "$ENCRYPTION_KEY"
         
         if [ ! -f "$ENCRYPTED_FILE" ]; then
           echo "❌ Failed to encrypt ZIP file"
@@ -125,19 +106,18 @@ jobs:
         fi
         
         ENCRYPTED_SIZE=$(stat -c%s "$ENCRYPTED_FILE" 2>/dev/null || stat -f%z "$ENCRYPTED_FILE" 2>/dev/null)
+        ENCRYPTION_OVERHEAD=$(echo "scale=1; (($ENCRYPTED_SIZE - $ORIGINAL_SIZE) * 100) / $ORIGINAL_SIZE" | bc -l)
+        
         echo "📊 Final encrypted size: $ENCRYPTED_SIZE bytes ($(echo "scale=1; $ENCRYPTED_SIZE / 1024 / 1024" | bc -l) MB)"
+        echo "📊 Encryption overhead: ${ENCRYPTION_OVERHEAD}%"
         
         # Store values for later steps
         echo "ORIGINAL_SIZE=$ORIGINAL_SIZE" >> $GITHUB_ENV
-        echo "ZIP_SIZE=$ZIP_SIZE" >> $GITHUB_ENV
         echo "ENCRYPTED_SIZE=$ENCRYPTED_SIZE" >> $GITHUB_ENV
-        echo "COMPRESSION_RATIO=$COMPRESSION_RATIO" >> $GITHUB_ENV
+        echo "ENCRYPTION_OVERHEAD=$ENCRYPTION_OVERHEAD" >> $GITHUB_ENV
         echo "RELEASE_FILE=$ENCRYPTED_FILE" >> $GITHUB_ENV
         
-        # Clean up intermediate files
-        rm -f "$ZIP_FILE"
-        
-        echo "✅ Database encrypted successfully using zip-then-encrypt workflow"
+        echo "✅ ZIP file encrypted successfully - final release file: $ENCRYPTED_FILE"
       env:
         ENCRYPTION_KEY: ${{ secrets.DB_ENCRYPTION_KEY }}
         
@@ -163,8 +143,6 @@ jobs:
         
     - name: 🔄 Switch to main branch and update
       run: |
-        RELEASE_FILE="$RELEASE_FILE"
-        
         # Store the encrypted file temporarily
         TEMP_FILE="/tmp/encrypted_database_$(date +%s).zip"
         cp "$RELEASE_FILE" "$TEMP_FILE"
@@ -188,7 +166,7 @@ jobs:
         mkdir -p database
         
         # Copy the encrypted database to main branch
-        TARGET_FILE="database/spjin-database.zip"
+        TARGET_FILE="database/SPJIN.db.zip"
         cp "$TEMP_FILE" "$TARGET_FILE"
         echo "📁 Copied encrypted file to: $TARGET_FILE"
         
@@ -206,7 +184,17 @@ jobs:
     - name: 🚀 Create Release
       run: |
         VERSION="${{ steps.version.outputs.version }}"
-        RELEASE_FILE="$RELEASE_FILE"
+        
+        # Verify the release file exists
+        if [ ! -f "$RELEASE_FILE" ]; then
+          echo "❌ Release file not found: $RELEASE_FILE"
+          echo "Current directory contents:"
+          ls -la
+          exit 1
+        fi
+        
+        echo "📦 Preparing to release file: $RELEASE_FILE"
+        echo "📊 File size: $(stat -c%s "$RELEASE_FILE" 2>/dev/null || stat -f%z "$RELEASE_FILE" 2>/dev/null) bytes"
         
         # Create comprehensive release notes
         echo "## 🗄️ Database Update" > release_notes.md
@@ -216,15 +204,14 @@ jobs:
         echo "## 📊 Database Information" >> release_notes.md
         echo "- **Version**: $VERSION" >> release_notes.md
         echo "- **Updated**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> release_notes.md
-        echo "- **Original database size**: $(echo "scale=1; $ORIGINAL_SIZE / 1024 / 1024" | bc -l) MB" >> release_notes.md
-        echo "- **Compressed size**: $(echo "scale=1; $ZIP_SIZE / 1024 / 1024" | bc -l) MB" >> release_notes.md
+        echo "- **Original ZIP size**: $(echo "scale=1; $ORIGINAL_SIZE / 1024 / 1024" | bc -l) MB" >> release_notes.md
         echo "- **Final encrypted size**: $(echo "scale=1; $ENCRYPTED_SIZE / 1024 / 1024" | bc -l) MB" >> release_notes.md
-        echo "- **Compression ratio**: ${COMPRESSION_RATIO}%" >> release_notes.md
+        echo "- **Encryption overhead**: ${ENCRYPTION_OVERHEAD}%" >> release_notes.md
         echo "" >> release_notes.md
         echo "## 🔄 Processing Workflow" >> release_notes.md
-        echo "1. **Compress**: Database compressed using ZIP with maximum compression" >> release_notes.md
+        echo "1. **Input**: Pre-compressed ZIP file with database inside" >> release_notes.md
         echo "2. **Encrypt**: ZIP file encrypted using AES-256-CBC with salt" >> release_notes.md
-        echo "3. **Distribute**: Single encrypted file ready for download" >> release_notes.md
+        echo "3. **Distribute**: Encrypted ZIP ready for download as \`SPJIN.db.zip\`" >> release_notes.md
         echo "" >> release_notes.md
         echo "## 🔐 Security Features" >> release_notes.md
         echo "- **Encryption**: AES-256-CBC with OpenSSL salt" >> release_notes.md
@@ -232,15 +219,15 @@ jobs:
         echo "- **Format**: OpenSSL-compatible encrypted ZIP file" >> release_notes.md
         echo "" >> release_notes.md
         echo "## 📱 Mobile App Usage" >> release_notes.md
-        echo "1. App downloads \`$(basename "$RELEASE_FILE")\` from this release" >> release_notes.md
+        echo "1. App downloads \`SPJIN.db.zip\` from this release" >> release_notes.md
         echo "2. App decrypts the file using the configured 32-character key" >> release_notes.md
-        echo "3. App extracts the ZIP to get \`SPJIN.db\`" >> release_notes.md
+        echo "3. App extracts the ZIP to get the database file(s)" >> release_notes.md
         echo "4. Database is ready for use in the app" >> release_notes.md
         echo "" >> release_notes.md
         echo "## 🔧 Technical Details" >> release_notes.md
-        echo "- **Download filename**: \`$(basename "$RELEASE_FILE")\`" >> release_notes.md
+        echo "- **Download filename**: \`SPJIN.db.zip\`" >> release_notes.md
         echo "- **Expected workflow**: Download → Decrypt → Extract → Use" >> release_notes.md
-        echo "- **Compression**: ZIP format with maximum compression" >> release_notes.md
+        echo "- **Source**: Pre-compressed ZIP file (encrypted for security)" >> release_notes.md
         echo "- **Encryption**: OpenSSL AES-256-CBC with salt and 32-char key" >> release_notes.md
         
         # Create release with the encrypted ZIP file
@@ -251,13 +238,13 @@ jobs:
           "$RELEASE_FILE"
         
         echo "🎉 Release created: $VERSION"
-        echo "📦 File uploaded: $(basename "$RELEASE_FILE")"
+        echo "📦 File uploaded: SPJIN.db.zip"
         echo "📊 Download size: $(echo "scale=1; $ENCRYPTED_SIZE / 1024 / 1024" | bc -l) MB"
-        echo "✅ Mobile app should download: $(basename "$RELEASE_FILE")"
+        echo "✅ Mobile app should download: SPJIN.db.zip"
         echo ""
         echo "🔄 Workflow Summary:"
-        echo "  Original → Compress → Encrypt → Distribute"
-        echo "  $(echo "scale=1; $ORIGINAL_SIZE / 1024 / 1024" | bc -l)MB → $(echo "scale=1; $ZIP_SIZE / 1024 / 1024" | bc -l)MB → $(echo "scale=1; $ENCRYPTED_SIZE / 1024 / 1024" | bc -l)MB → Release"
+        echo "  Pre-compressed ZIP → Encrypt → Distribute as SPJIN.db.zip"
+        echo "  $(echo "scale=1; $ORIGINAL_SIZE / 1024 / 1024" | bc -l)MB → $(echo "scale=1; $ENCRYPTED_SIZE / 1024 / 1024" | bc -l)MB → Release"
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         
