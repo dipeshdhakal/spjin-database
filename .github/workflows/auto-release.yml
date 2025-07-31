@@ -42,20 +42,10 @@ jobs:
         ZIP_FILE=$(find database -name "*.zip" -type f | head -1)
         if [ -n "$ZIP_FILE" ]; then
           echo "Found compressed database: $ZIP_FILE"
-          # Clean up any existing extracted files first
-          find database -name "*.db" -type f -delete 2>/dev/null || true
-          # Extract the zip file, excluding macOS metadata, overwrite without prompting
-          unzip -o "$ZIP_FILE" -d database/ -x "__MACOSX/*"
-          # Remove any macOS metadata files that might have been extracted anyway
-          find database -name "._*" -type f -delete 2>/dev/null || true
-          find database -path "*/__MACOSX/*" -delete 2>/dev/null || true
-          # Find the extracted .db file (exclude macOS metadata files)
-          DB_FILE=$(find database -name "*.db" -type f | grep -v "__MACOSX" | grep -v "/\._" | head -1)
-          if [ -z "$DB_FILE" ]; then
-            echo "❌ No .db file found inside the zip archive!"
-            exit 1
-          fi
-          echo "Extracted database: $DB_FILE"
+          # For zip files, we'll encrypt the zip directly to preserve compression
+          DB_FILE="$ZIP_FILE"
+          echo "Using compressed file directly: $DB_FILE"
+          IS_ZIPPED=true
         else
           # Look for direct .db file (exclude macOS metadata files)
           DB_FILE=$(find database -name "*.db" -type f | grep -v "__MACOSX" | grep -v "/\._" | head -1)
@@ -64,10 +54,12 @@ jobs:
             exit 1
           fi
           echo "Found database: $DB_FILE"
+          IS_ZIPPED=false
         fi
         
         echo "db_file=$DB_FILE" >> $GITHUB_OUTPUT
         echo "db_name=$(basename $DB_FILE)" >> $GITHUB_OUTPUT
+        echo "is_zipped=$IS_ZIPPED" >> $GITHUB_OUTPUT
         
     - name: ✅ Validate Database
       run: |
@@ -163,45 +155,68 @@ jobs:
         DB_FILE="${{ steps.find-db.outputs.db_file }}"
         DB_NAME="${{ steps.find-db.outputs.db_name }}"
         VERSION="${{ steps.version.outputs.version }}"
+        IS_ZIPPED="${{ steps.find-db.outputs.is_zipped }}"
         
-        # Create zipped version for release with maximum compression
-        ZIPPED_FILE="SPJIN.db.zip"
-        echo "📦 Creating zipped release file: $ZIPPED_FILE"
-        echo "📊 Original file: $DB_FILE"
-        ls -la "$DB_FILE"
-        
-        # Use maximum compression level (-9) and ensure only the .db file is in the zip root
-        # Change to the directory containing the .db file and zip just the filename
-        ORIGINAL_DIR=$(pwd)
-        cd "$(dirname "$DB_FILE")"
-        zip -9 "$ORIGINAL_DIR/$ZIPPED_FILE" "$(basename "$DB_FILE")"
-        cd "$ORIGINAL_DIR"
-        
-        # Verify the zip file was created and show its contents
-        if [ ! -f "$ZIPPED_FILE" ]; then
-          echo "❌ Failed to create zip file"
-          exit 1
-        fi
-        
-        echo "📦 Zip file contents:"
-        unzip -l "$ZIPPED_FILE"
-        
-        # Get file sizes for release notes
-        ENCRYPTED_SIZE=$(stat -c%s "$DB_FILE" 2>/dev/null || stat -f%z "$DB_FILE" 2>/dev/null)
-        ZIPPED_SIZE=$(stat -c%s "$ZIPPED_FILE" 2>/dev/null || stat -f%z "$ZIPPED_FILE" 2>/dev/null)
-        
-        echo "📊 Detailed compression analysis:"
-        echo "   Original encrypted file: $DB_FILE"
-        echo "   Original size: $ENCRYPTED_SIZE bytes ($(echo "scale=1; $ENCRYPTED_SIZE / 1024 / 1024" | bc -l) MB)"
-        echo "   Zipped file: $ZIPPED_FILE"
-        echo "   Zipped size: $ZIPPED_SIZE bytes ($(echo "scale=1; $ZIPPED_SIZE / 1024 / 1024" | bc -l) MB)"
-        
-        if [ "$ZIPPED_SIZE" -lt "$ENCRYPTED_SIZE" ]; then
-          COMPRESSION_RATIO=$(echo "scale=1; (($ENCRYPTED_SIZE - $ZIPPED_SIZE) * 100) / $ENCRYPTED_SIZE" | bc -l)
-          echo "   Compression achieved: ${COMPRESSION_RATIO}%"
+        if [ "$IS_ZIPPED" = "true" ]; then
+          # For pre-compressed files, the encrypted file is already the final file
+          RELEASE_FILE="$DB_FILE"
+          RELEASE_FILENAME="$(basename "$DB_FILE")"
+          
+          echo "📦 Using encrypted compressed file directly: $RELEASE_FILE"
+          
+          # Get file size for release notes
+          FINAL_SIZE=$(stat -c%s "$RELEASE_FILE" 2>/dev/null || stat -f%z "$RELEASE_FILE" 2>/dev/null)
+          
+          echo "📊 Final release file:"
+          echo "   File: $RELEASE_FILE"
+          echo "   Size: $FINAL_SIZE bytes ($(echo "scale=1; $FINAL_SIZE / 1024 / 1024" | bc -l) MB)"
+          echo "   Format: Encrypted compressed database (preserves original compression)"
+          
+          COMPRESSION_NOTE="Pre-compressed and encrypted (maintains original compression efficiency)"
         else
-          COMPRESSION_RATIO="0"
-          echo "   ⚠️  No compression achieved (zip file is same size or larger)"
+          # For uncompressed .db files, create zipped version
+          ZIPPED_FILE="SPJIN.db.zip"
+          echo "📦 Creating zipped release file: $ZIPPED_FILE"
+          echo "📊 Original file: $DB_FILE"
+          ls -la "$DB_FILE"
+          
+          # Use maximum compression level (-9) and ensure only the .db file is in the zip root
+          ORIGINAL_DIR=$(pwd)
+          cd "$(dirname "$DB_FILE")"
+          zip -9 "$ORIGINAL_DIR/$ZIPPED_FILE" "$(basename "$DB_FILE")"
+          cd "$ORIGINAL_DIR"
+          
+          # Verify the zip file was created and show its contents
+          if [ ! -f "$ZIPPED_FILE" ]; then
+            echo "❌ Failed to create zip file"
+            exit 1
+          fi
+          
+          echo "📦 Zip file contents:"
+          unzip -l "$ZIPPED_FILE"
+          
+          RELEASE_FILE="$ZIPPED_FILE"
+          RELEASE_FILENAME="$ZIPPED_FILE"
+          
+          # Get file sizes for release notes
+          ENCRYPTED_SIZE=$(stat -c%s "$DB_FILE" 2>/dev/null || stat -f%z "$DB_FILE" 2>/dev/null)
+          FINAL_SIZE=$(stat -c%s "$ZIPPED_FILE" 2>/dev/null || stat -f%z "$ZIPPED_FILE" 2>/dev/null)
+          
+          echo "📊 Detailed compression analysis:"
+          echo "   Original encrypted file: $DB_FILE"
+          echo "   Original size: $ENCRYPTED_SIZE bytes ($(echo "scale=1; $ENCRYPTED_SIZE / 1024 / 1024" | bc -l) MB)"
+          echo "   Zipped file: $ZIPPED_FILE"
+          echo "   Zipped size: $FINAL_SIZE bytes ($(echo "scale=1; $FINAL_SIZE / 1024 / 1024" | bc -l) MB)"
+          
+          if [ "$FINAL_SIZE" -lt "$ENCRYPTED_SIZE" ]; then
+            COMPRESSION_RATIO=$(echo "scale=1; (($ENCRYPTED_SIZE - $FINAL_SIZE) * 100) / $ENCRYPTED_SIZE" | bc -l)
+            echo "   Compression achieved: ${COMPRESSION_RATIO}%"
+            COMPRESSION_NOTE="Encrypted then compressed (limited compression due to encryption)"
+          else
+            COMPRESSION_RATIO="0"
+            echo "   ⚠️  No compression achieved (zip file is same size or larger)"
+            COMPRESSION_NOTE="Encrypted database (minimal compression due to encryption)"
+          fi
         fi
         
         # Create release notes
@@ -213,38 +228,38 @@ jobs:
         echo "- Updated encrypted database file" >> release_notes.md
         echo "- Version: $VERSION" >> release_notes.md
         echo "- Updated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> release_notes.md
-        echo "- Original encrypted size: $(echo "scale=1; $ENCRYPTED_SIZE / 1024 / 1024" | bc -l) MB" >> release_notes.md
-        echo "- Download file size: $(echo "scale=1; $ZIPPED_SIZE / 1024 / 1024" | bc -l) MB" >> release_notes.md
-        if [ "$COMPRESSION_RATIO" != "0" ] && [ "$(echo "$COMPRESSION_RATIO > 1" | bc -l)" -eq 1 ]; then
-          echo "- Compression savings: ${COMPRESSION_RATIO}%" >> release_notes.md
-        else
-          echo "- File format: Encrypted database (minimal compression due to encryption)" >> release_notes.md
-        fi
+        echo "- Download file size: $(echo "scale=1; $FINAL_SIZE / 1024 / 1024" | bc -l) MB" >> release_notes.md
+        echo "- Compression: $COMPRESSION_NOTE" >> release_notes.md
         echo "" >> release_notes.md
         echo "## 🔐 Security" >> release_notes.md
         echo "- Database is encrypted with AES-256-CBC" >> release_notes.md
         echo "- Encryption key required for decryption" >> release_notes.md
-        echo "- File is zipped for optimal download speed" >> release_notes.md
+        echo "- File is ready for download and use" >> release_notes.md
         echo "" >> release_notes.md
         echo "## 📱 Mobile App Usage" >> release_notes.md
-        echo "1. App downloads SPJIN.db.zip from the release" >> release_notes.md
-        echo "2. App unzips to get SPJIN.db (encrypted database file)" >> release_notes.md
-        echo "3. App automatically decrypts using the configured key" >> release_notes.md
-        echo "4. Decrypted database is ready for use" >> release_notes.md
+        if [ "$IS_ZIPPED" = "true" ]; then
+          echo "1. App downloads $RELEASE_FILENAME from the release" >> release_notes.md
+          echo "2. App unzips to get the database file" >> release_notes.md
+          echo "3. App automatically decrypts using the configured key" >> release_notes.md
+          echo "4. Decrypted database is ready for use" >> release_notes.md
+        else
+          echo "1. App downloads $RELEASE_FILENAME from the release" >> release_notes.md
+          echo "2. App unzips to get SPJIN.db (encrypted database file)" >> release_notes.md
+          echo "3. App automatically decrypts using the configured key" >> release_notes.md
+          echo "4. Decrypted database is ready for use" >> release_notes.md
+        fi
         
-        # Create release with zipped encrypted database file
+        # Create release with the appropriate file
         gh release create "$VERSION" \
           --title "🗄️ Database $VERSION" \
           --notes-file release_notes.md \
           --latest \
-          "$ZIPPED_FILE"
+          "$RELEASE_FILE"
         
         echo "🎉 Release created: $VERSION"
-        echo "📦 Zipped encrypted file uploaded: $ZIPPED_FILE"
-        echo "📊 Original size: $(echo "scale=1; $ENCRYPTED_SIZE / 1024 / 1024" | bc -l) MB"
-        echo "📊 Zipped size: $(echo "scale=1; $ZIPPED_SIZE / 1024 / 1024" | bc -l) MB"
-        echo "📊 Compression savings: ${COMPRESSION_RATIO}%"
-        echo "✅ Mobile app should download: $ZIPPED_FILE → extract → SPJIN.db"
+        echo "📦 File uploaded: $RELEASE_FILENAME"
+        echo "📊 Download size: $(echo "scale=1; $FINAL_SIZE / 1024 / 1024" | bc -l) MB"
+        echo "✅ Mobile app should download: $RELEASE_FILENAME"
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         
