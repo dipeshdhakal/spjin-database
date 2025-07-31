@@ -85,6 +85,15 @@ jobs:
           ENCRYPTION_KEY="${ENCRYPTION_KEY:0:32}"
         fi
         
+        # Debug: Show key info (DO NOT log the full key in production!)
+        echo "🔐 Key length: ${#ENCRYPTION_KEY} characters"
+        echo "🔐 Key first 8 chars: '${ENCRYPTION_KEY:0:8}'"
+        echo "🔐 Key last 8 chars: '${ENCRYPTION_KEY: -8}'"
+        
+        # TEMPORARY: Use hardcoded key to eliminate secret issues
+        ENCRYPTION_KEY="+HehSIopDXwId20GMzXeancSkoKxaU1I"
+        echo "🔐 Using hardcoded key for testing: first 8 chars '${ENCRYPTION_KEY:0:8}', last 8 chars '${ENCRYPTION_KEY: -8}'"
+        
         # Get original ZIP file size
         ORIGINAL_SIZE=$(stat -c%s "$DB_FILE" 2>/dev/null || stat -f%z "$DB_FILE" 2>/dev/null)
         echo "📊 Original ZIP file size: $ORIGINAL_SIZE bytes ($(echo "scale=1; $ORIGINAL_SIZE / 1024 / 1024" | bc -l) MB)"
