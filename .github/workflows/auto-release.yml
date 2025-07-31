@@ -125,30 +125,53 @@ jobs:
     - name: 🔄 Switch to main branch and update
       run: |
         DB_FILE="${{ steps.find-db.outputs.db_file }}"
+        IS_ZIPPED="${{ steps.find-db.outputs.is_zipped }}"
         
-        # Store the encrypted database file temporarily
-        cp "$DB_FILE" /tmp/encrypted_database.db
+        # Store the encrypted database file temporarily with a unique name
+        TEMP_FILE="/tmp/encrypted_database_$(date +%s).db"
+        cp "$DB_FILE" "$TEMP_FILE"
+        echo "📁 Temporarily stored encrypted file: $TEMP_FILE"
         
         # Configure git
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
         
+        # Reset any changes to the current branch before switching
+        echo "🔄 Resetting changes in feat/update branch"
+        git checkout -- .
+        git clean -fd
+        
         # Switch to main branch
+        echo "🔄 Switching to main branch"
         git fetch origin main
         git checkout main
         
         # Create database directory if it doesn't exist
         mkdir -p database
         
+        # Determine the target filename for main branch
+        if [ "$IS_ZIPPED" = "true" ]; then
+          # For zip files, keep the same filename
+          TARGET_FILE="$DB_FILE"
+        else
+          # For .db files, ensure we use the standard naming
+          TARGET_FILE="database/SPJIN.db"
+        fi
+        
         # Copy the encrypted database to the correct location
-        cp /tmp/encrypted_database.db "$DB_FILE"
+        cp "$TEMP_FILE" "$TARGET_FILE"
+        echo "📁 Copied encrypted file to: $TARGET_FILE"
         
         # Commit the encrypted database
-        git add "$DB_FILE"
+        git add "$TARGET_FILE"
         git commit -m "🔐 Update encrypted database to ${{ steps.version.outputs.version }}"
         
         # Push using token
         git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git main
+        
+        # Clean up temp file
+        rm -f "$TEMP_FILE"
+        echo "🗑️ Cleaned up temporary file"
         
     - name: 🚀 Create Release
       run: |
